@@ -40,9 +40,11 @@ REJECTION_RATIO = 26
 ORP2_STATUS = 28
 RELAYS_ALARMS_STATUS = 30
 
+delay_time = 0.2
 
 class Modbus_TestLib:
     def __init__(self, device_number, port, baudrate=19200, parity='E'):
+
         """ Set up Minimal Modbus """
         self.instrument = minimalmodbus.Instrument(port, device_number, mode="rtu")
         self.instrument.serial.baudrate = baudrate  # Baud
@@ -60,6 +62,10 @@ class Modbus_TestLib:
         else:
             self.device_id = 'ID' + str(device_number)
 
+        self.f = open('testResults/MCL900_Modbus_TestResult_' + str(device_number) + '.log', 'w')
+        message = 'Port: '+str(port) + '   Baud Rate: '+str(baudrate) + '   Parity: '+str(parity) + '\n'
+        self.f.write(message)
+        
         """ Initialize Excel Worksheets """
         self.file_in = 'testResults/MCL900_Modbus_Registers.xls'
         self.file_out = 'testResults/MCL900_Modbus_TestResult_' + str(device_number) + '.xlsx'
@@ -127,11 +133,11 @@ class Modbus_TestLib:
         self.initialize_workbook_xlsxwriter_row0(device_id)
         self.initialize_workbook_xlsxwriter_rows(device_id)
 
-    def log_misc_test(self, message, start_address, number_of_registers):
+    def log_misc_test(self, message, start_addr, number_of_registers):
         self.index_misc_test += 1
         cell_format = self.wb_out.add_format({'bold': True, 'font_color': 'blue', 'align': 'set_align'})
         self.ws_out.write(self.index_misc_test, 0, message, cell_format)
-        self.ws_out.write(self.index_misc_test, 1, start_address, cell_format)
+        self.ws_out.write(self.index_misc_test, 1, start_addr, cell_format)
         self.ws_out.write(self.index_misc_test, 2, number_of_registers, cell_format)
         self.ws_out.write(self.index_misc_test, 3, 'Error Reported', cell_format)
 
@@ -152,18 +158,21 @@ class Modbus_TestLib:
       get_data_config()
       refresh_config()
     """
-    def get_relays_alarms(self, register_address, number_of_bits):
-        data_bits = self.instrument.read_bits(register_address, number_of_bits, functioncode=READ_RELAY_ALARM)
+    def get_relays_alarms(self, register_address, num_bits):
+        data_bits = self.instrument.read_bits(register_address, num_bits, functioncode=READ_RELAY_ALARM)
+        time.sleep(delay_time)
         return data_bits
 
     def get_data_status(self, register_address, func_code, number_of_registers):
         register_data = self.instrument.read_registers(
             register_address, number_of_registers, func_code, number_of_registers/2, is_float=True)
+        time.sleep(delay_time)
         return register_data
 
     def get_data_config(self, register_address, func_code, number_of_registers):
         register_data = self.instrument.read_registers(
             register_address, number_of_registers, func_code, number_of_registers/2, is_float=False)
+        time.sleep(delay_time)
         return register_data
 
     def refresh_config(self):
@@ -174,71 +183,90 @@ class Modbus_TestLib:
     """ -----------------------------------------------------------------------
     Group tests sequences into various methods below 
     """
-    def read_sequential(self, function_code, start_address, number_of_registers):
+    def read_sequential(self, function_code, start_addr, number_of_registers):
         if function_code == READ_CONFIG_REGISTER:
-            register_data = self.get_data_config(start_address, function_code, number_of_registers)
+            register_data = self.get_data_config(start_addr, function_code, number_of_registers)
         else:
-            register_data = self.get_data_status(start_address, function_code, number_of_registers)
+            register_data = self.get_data_status(start_addr, function_code, number_of_registers)
+        time.sleep(delay_time)
         return register_data
 
-    def read_sequential_registers(self, function_code, start_address, number_of_registers):
+    def read_sequential_registers(self, function_code, start_addr, number_of_registers):
+        print 'Start Read Sequential Registers with Function Code: '+str(function_code)
         result_colm = 3
         try:
             if function_code == READ_CONFIG_REGISTER:
-                message = 'Read Sequential Config Register FuncCode ' + str(function_code)
-                print message + ' start_address:'+str(start_address) + ' number_of_registers:'+str(number_of_registers)
-                self.log_misc_test(message, start_address, number_of_registers)
-                register_data = self.get_data_config(start_address, function_code, number_of_registers)
+                register_data = self.get_data_config(start_addr, function_code, number_of_registers)
+                msg0 = 'Read Sequential Config Register FuncCode ' + str(function_code)
+                self.log_misc_test(msg0, start_addr, number_of_registers)
             else:
-                message = 'Read Sequential Data Register FuncCode ' + str(function_code)
-                print message + ' start_address:'+str(start_address) + ' number_of_registers:'+str(number_of_registers)
-                self.log_misc_test(message, start_address, number_of_registers)
-                register_data = self.get_data_status(start_address, function_code, number_of_registers)
+                register_data = self.get_data_status(start_addr, function_code, number_of_registers)
+                msg0 = ' Read Sequential Data Register FuncCode ' + str(function_code)
+                self.log_misc_test(msg0, start_addr, number_of_registers)
+            msg1 = msg0 + ' start_addr:'+str(start_addr) + ' number_of_registers:'+str(number_of_registers)
+
             self.ws_out.write_string(self.index_misc_test, result_colm, 'Pass', self.fm_pass)
+            msg2 = ' Pass -- ' + msg1
         except Exception as e:
             print(e)
             self.ws_out.write_string(self.index_misc_test, result_colm, 'Fail', self.fm_fail)
+            msg2 = ' Fail -- ' + msg1
+        print msg2 + '\n'
+        self.f.write(msg2 + '\n')
+        time.sleep(delay_time)
         return register_data
 
     def read_random_registers(self, function_code, random_start=False, random_size=False):
+        msg0 = 'Start Read Random Registers with Function Code: '+str(function_code)
+        print msg0
+        self.f.write(msg0 + '\n')
+
         result_colm = 3
         for x in range(SERIES_900_REGISTER_SIZE):
             if random_start:
-                start_address = random.randint(0, SERIES_900_REGISTER_SIZE - 1)
+                start_addr = random.randint(0, SERIES_900_REGISTER_SIZE - 1)
             else:
-                start_address = COND1_STATUS
+                start_addr = COND1_STATUS
             if random_size:
-                number_of_registers = random.randint(1, SERIES_900_REGISTER_SIZE - start_address)
+                number_of_registers = random.randint(1, SERIES_900_REGISTER_SIZE - start_addr)
             else:
-                number_of_registers = SERIES_900_REGISTER_SIZE - start_address
-            start_address = 2 * start_address
+                number_of_registers = SERIES_900_REGISTER_SIZE - start_addr
+            start_addr = 2 * start_addr
             number_of_registers = 2 * number_of_registers
 
             try:
                 if function_code == READ_CONFIG_REGISTER:
-                    message = 'Read Random Config Register FuncCode ' + str(function_code)
-                    print message + ' start_address:' + str(start_address) + ' number_of_registers:' + str(number_of_registers)
-                    self.log_misc_test(message, start_address, number_of_registers)
-                    self.get_data_config(start_address, function_code, number_of_registers)
+                    msg1 = ' Read Random Config Register FuncCode ' + str(function_code)
+                    self.log_misc_test(msg1, start_addr, number_of_registers)
+                    register_data = self.get_data_config(start_addr, function_code, number_of_registers)
                 else:
-                    message = 'Read Random Data Register FuncCode ' + str(function_code)
-                    print message + ' start_address:' + str(start_address) + ' number_of_registers:' + str(number_of_registers)
-                    self.log_misc_test(message, start_address, number_of_registers)
-                    self.get_data_status(start_address, function_code, number_of_registers)
+                    msg1 = ' Read Random Data Register FuncCode ' + str(function_code)
+                    self.log_misc_test(msg1, start_addr, number_of_registers)
+                    register_data = self.get_data_status(start_addr, function_code, number_of_registers)
                 self.ws_out.write_string(self.index_misc_test, result_colm, 'Pass', self.fm_pass)
+                msg2 = ' Pass -- ' + msg1 + ' start_addr:' + str(start_addr) + ' number_of_registers:' + str(number_of_registers)
             except Exception as e:
                 print(e)
                 self.ws_out.write_string(self.index_misc_test, result_colm, 'Fail', self.fm_fail)
+                msg2 = ' Fail -- ' + msg1
+            print msg2 + '\n'
+            self.f.write(msg2 + '\n')
+            time.sleep(delay_time)
+            return register_data
 
     def compare_configuration_registers(self):
+        self.f.write('Start Compare Config Regs \n')
         register_data = self.read_sequential(READ_CONFIG_REGISTER, COND1_STATUS, MODBUS_900_REGISTER_SIZE)
         for i in range(0, len(register_data)):
             i1 = i + 1
             self.ws_out.write_number(i1, self.read_config_colm, register_data[i])  # save to Read Config column
             if self.ws_in.cell_value(i1, self.exp_config_colm) == register_data[i]:  # compare Expected Config to Read Config
-                self.ws_out.write_string(i1, self.compare_config, 'pass', self.fm_pass)  # save result to Compare Config
+                self.ws_out.write_string(i1, self.compare_config, 'Pass', self.fm_pass)  # save result to Compare Config
+                msg = ' Read Config Reg: Pass,  Addr:'+str(i1)
             else:
-                self.ws_out.write_string(i1, self.compare_config, 'fail', self.fm_fail)
+                self.ws_out.write_string(i1, self.compare_config, 'Fail', self.fm_fail)
+                msg = ' Read Config Reg: Fail,  Addr:'+str(i1)
+            self.f.write(msg + '\n')
 
     def compare_data_registers(self):
         register_data = self.read_sequential(READ_STATUS_REGISTER, COND1_STATUS, MODBUS_900_REGISTER_SIZE)
@@ -247,19 +275,25 @@ class Modbus_TestLib:
             self.ws_out.write_number(i1, self.read_data_colm, register_data[i])  # save to Read Data column
             if round(self.ws_in.cell_value(i1, self.exp_data_colm), 0) == round(register_data[i], 0):  # compare Expected Data to Read Data
                 self.ws_out.write_string(i1, self.compare_data, 'pass', self.fm_pass)  # save result to Compare Data
+                msg = ' Pass -- Read Data Reg,  Addr:'+str(i1)
             else:
                 self.ws_out.write_string(i1, self.compare_data, 'fail', self.fm_fail)
+                msg = ' Fail -- Read Data Reg,  Addr:'+str(i1)
+            self.f.write(msg + '\n')
 
     def compare_relay_alarm_bits(self):
-        number_of_bits = 6
-        data_bits = self.get_relays_alarms(0, number_of_bits)
+        num_bits = 6
+        data_bits = self.get_relays_alarms(0, num_bits)
         for i in range(0, len(data_bits)):
             i1 = i + 1
             self.ws_out.write_number(i1, self.read_relay_alarm_colm, data_bits[i])
-            if self.ws_in.cell_value(i1, self.exp_relay_alarm_colm) == data_bits[i]:  # compare Expected Config to Read Config
-                self.ws_out.write_string(i1, self.compare_relay_alarm, 'pass', self.fm_pass)  # save result to Compare Config
+            if self.ws_in.cell_value(i1, self.exp_relay_alarm_colm) == data_bits[i]:
+                self.ws_out.write_string(i1, self.compare_relay_alarm, 'pass', self.fm_pass)
+                msg = ' Pass -- Read Discrete,  Addr:'+str(i1)
             else:
                 self.ws_out.write_string(i1, self.compare_relay_alarm, 'fail', self.fm_fail)
+                msg = ' Fail -- Read Discrete,  Addr:'+str(i1)
+            self.f.write(msg + '\n')
 
     """ -----------------------------------------------------------------------
     run_read_sequential_test()
@@ -300,116 +334,229 @@ class Modbus_TestLib:
     """
     def run_error_condition_test(self):
         result_colm = 4
-        number_of_registers = 8
-        start_address = COND1_STATUS + 1
+        num_regs = 8
+        start_addr = COND1_STATUS + 1
 
-        message = 'Start at odd address Config Register'
-        self.log_misc_test(message, start_address, number_of_registers)
+        """ 
+        Error condition: Start at odd address 
+        """
+        msg0 = 'Config Register starts at odd address'
+        msg00 = msg0 + ' -- Start Addr:'+str(start_addr) + 'Number of Regs:'+str(num_regs)
+        self.f.write(msg00 + '\n')
+        self.log_misc_test(msg0, start_addr, num_regs)
         try:  # Error: illegal data address. Start at odd address Config Register
-            self.get_data_status(start_address, READ_CONFIG_REGISTER, number_of_registers)
+            self.get_data_status(start_addr, READ_CONFIG_REGISTER, num_regs)
         except Exception as e:
             print(e)
             if str(e) == 'Slave reported illegal data address':
-                print ' + Pass expected error condition test - Start at odd address Config Register'
                 self.ws_out.write_string(self.index_misc_test, result_colm, 'Pass', self.fm_pass)
+                msg1 = ' Pass -- Config Register return with report illegal data address'
             else:
                 self.ws_out.write_string(self.index_misc_test, result_colm, 'Fail', self.fm_fail)
+                msg1 = ' Fail -- Config Register return with report illegal data address'
+            print msg1
+            self.f.write(msg1 + '\n')
 
-        message = 'Start at odd address Data Register'
-        self.log_misc_test(message, start_address, number_of_registers)
+        msg0 = 'Data Register starts at odd address'
+        msg00 = msg0 + ' -- Start Addr:'+str(start_addr) + 'Number of Regs:'+str(num_regs)
+        self.f.write(msg00 + '\n')
+        self.log_misc_test(msg0, start_addr, num_regs)
         try:  # Error: illegal data address. Start at odd address Data Register
-            self.get_data_status(start_address, READ_STATUS_REGISTER, number_of_registers)
+            self.get_data_status(start_addr, READ_STATUS_REGISTER, num_regs)
         except Exception as e:
             print(e)
             if str(e) == 'Slave reported illegal data address':
-                print ' + Pass expected error condition test - Start at odd address Data Register'
                 self.ws_out.write_string(self.index_misc_test, result_colm, 'Pass', self.fm_pass)
+                msg1 = ' Pass -- Data Register return with report illegal data address'
             else:
                 self.ws_out.write_string(self.index_misc_test, result_colm, 'Fail', self.fm_fail)
+                msg1 = ' Fail -- Data Register return with report illegal data address'
+            print msg1
+            self.f.write(msg1 + '\n')
 
-        start_address = MODBUS_900_REGISTER_SIZE + 2
-        message = 'Start at out of range Config Register address'
-        self.log_misc_test(message, start_address, number_of_registers)
+        """ 
+        Error condition: Start at out of range 
+        """
+        start_addr = MODBUS_900_REGISTER_SIZE + 2
+        msg0 = 'Config Register starts at out of range'
+        msg00 = msg0 + ' -- Start Addr:'+str(start_addr) + 'Number of Regs:'+str(num_regs)
+        self.f.write(msg00 + '\n')
+        self.log_misc_test(msg0, start_addr, num_regs)
         try:  # Error: illegal data address. Start at out of range Config Register address
-            self.get_data_status(start_address, READ_CONFIG_REGISTER, number_of_registers)
+            self.get_data_status(start_addr, READ_CONFIG_REGISTER, num_regs)
         except Exception as e:
             print(e)
             if str(e) == 'Slave reported illegal data address':
-                print ' + Pass expected error condition test - Start at out of range Config Register address'
                 self.ws_out.write_string(self.index_misc_test, result_colm, 'Pass', self.fm_pass)
+                msg1 = ' Pass -- Config Register return with report out of range address'
             else:
                 self.ws_out.write_string(self.index_misc_test, result_colm, 'Fail', self.fm_fail)
+                msg1 = ' Fail -- Config Register return with report out of range address'
+            print msg1
+            self.f.write(msg1 + '\n')
 
-        message = 'Start at out of range Data Register address'
-        self.log_misc_test(message, start_address, number_of_registers)
+        msg0 = 'Data Register starts at out of range'
+        msg00 = msg0 + ' -- Start Addr:' + str(start_addr) + 'Number of Regs:' + str(num_regs)
+        self.f.write(msg00 + '\n')
+        self.log_misc_test(msg0, start_addr, num_regs)
         try:  # Error: Slave reported illegal data address. Start at out of range Data Register address
-            self.get_data_status(MODBUS_900_REGISTER_SIZE + 2, READ_STATUS_REGISTER, number_of_registers)
+            self.get_data_status(MODBUS_900_REGISTER_SIZE + 2, READ_STATUS_REGISTER, num_regs)
         except Exception as e:
             print(e)
             if str(e) == 'Slave reported illegal data address':
-                print ' + Pass expected error condition test - Start at out of range Data Register address'
                 self.ws_out.write_string(self.index_misc_test, result_colm, 'Pass', self.fm_pass)
+                msg1 = ' Pass -- Data Register return with report out of range address'
             else:
                 self.ws_out.write_string(self.index_misc_test, result_colm, 'Fail', self.fm_fail)
+                msg1 = ' Fail -- Data Register return with report out of range address'
+            print msg1
+            self.f.write(msg1 + '\n')
 
-        start_address = COND1_STATUS
-        number_of_registers = 32
-        message = 'Read beyond Config Register address'
-        self.log_misc_test(message, start_address, number_of_registers)
+        """ 
+        Error condition: Read beyond address range 
+        """
+        start_addr = COND1_STATUS
+        num_regs = 32
+        msg0 = 'Config Register Read beyond last address'
+        msg00 = msg0 + ' -- Start Addr:' + str(start_addr) + 'Number of Regs:' + str(num_regs)
+        self.f.write(msg00 + '\n')
+        self.log_misc_test(msg0, start_addr, num_regs)
         try:  # Error: Slave reported illegal data value. Request read beyond Config Register address
-            self.get_data_status(start_address, READ_CONFIG_REGISTER, number_of_registers)
+            self.get_data_status(start_addr, READ_CONFIG_REGISTER, num_regs)
         except Exception as e:
             print(e)
             if str(e) == 'Slave reported illegal data value':
-                print ' + Pass expected error condition test - Read beyond Config Register address'
                 self.ws_out.write_string(self.index_misc_test, result_colm, 'Pass', self.fm_pass)
+                msg1 = ' Pass -- Config Register return with report Read beyond last address'
             else:
                 self.ws_out.write_string(self.index_misc_test, result_colm, 'Fail', self.fm_fail)
-
-        message = 'Read beyond Data Register address'
-        self.log_misc_test(message, start_address, number_of_registers)
+                msg1 = ' Fail -- Config Register return with report Read beyond last address'
+            print msg1
+            self.f.write(msg1 + '\n')
+            
+        msg0 = 'Data Register Read beyond last address'
+        msg00 = msg0 + ' -- Start Addr:' + str(start_addr) + 'Number of Regs:' + str(num_regs)
+        self.f.write(msg00 + '\n')
+        self.log_misc_test(msg0, start_addr, num_regs)
         try:  # Error: Slave reported illegal data value. Request read beyond Data Register address
-            self.get_data_status(start_address, READ_STATUS_REGISTER, number_of_registers)
+            self.get_data_status(start_addr, READ_STATUS_REGISTER, num_regs)
         except Exception as e:
             print(e)
             if str(e) == 'Slave reported illegal data value':
-                print ' + Pass expected error condition test - Read beyond Data Register address'
                 self.ws_out.write_string(self.index_misc_test, result_colm, 'Pass', self.fm_pass)
+                msg1 = ' Pass -- Data Register return with report Read beyond last address'
             else:
                 self.ws_out.write_string(self.index_misc_test, result_colm, 'Fail', self.fm_fail)
-
-        number_of_bits = 7
-        message = 'Relays & Alarm Request beyond bit address'
-        self.log_misc_test(message, start_address, number_of_registers)
+                msg1 = ' Fail -- Data Register return with report Read beyond last address'
+            print msg1
+            self.f.write(msg1 + '\n')
+            
+        num_bits = 7
+        msg0 = 'Relays & Alarm Read beyond last bit address'
+        msg00 = msg0 + ' -- Start Addr:' + str(start_addr) + 'Number of Regs:' + str(num_regs)
+        self.f.write(msg00 + '\n')
+        self.log_misc_test(msg0, start_addr, num_regs)
         try:  # Error: illegal bit address - Request bit beyond legal bit address
-            self.get_relays_alarms(0, number_of_bits)
+            self.get_relays_alarms(0, num_bits)
         except Exception as e:
             print(e)
             if str(e) == 'Slave reported illegal data value':
-                print ' + Pass expected error condition test - Request bit beyond legal bit address'
+
                 self.ws_out.write_string(self.index_misc_test, result_colm, 'Pass', self.fm_pass)
+                msg1 = ' Pass -- Relays & Alarm return with report Read beyond last bit'
             else:
                 self.ws_out.write_string(self.index_misc_test, result_colm, 'Fail', self.fm_fail)
+                msg1 = ' Fail -- Relays & Alarm return with report Read beyond last bit'
+            print msg1
+            self.f.write(msg1 + '\n')
 
+    """  Receive Modbus Function code and read a bounded starting register address """
     def unsupported_func_code_test(self, func_code):
         result_colm = 4
-        number_of_registers = 10
-        start_address = COND1_STATUS
-        message = '900S Unsupported function code ' + str(func_code)
-        self.log_misc_test(message, start_address, number_of_registers)
+        num_regs = 10
+        start_addr = COND1_STATUS
+        msg0 = '900S Unsupported function code:'+ str(func_code)
+        msg00 = msg0 + ' -- Start Addr:' + str(start_addr) + 'Number of Regs:' + str(num_regs)
+        self.f.write(msg00 + '\n')
+        self.log_misc_test(msg0, start_addr, num_regs)
         try:  # Error: Wrong function code. Request 900S unsupported Modbus function code
-            self.read_float(start_address, func_code, number_of_registers)
+            self.read_float(start_addr, func_code, num_regs)
         except Exception as e:
             print(e)
             # message = str(e)
             # message = message[0:19]
             # if message == 'Wrong function code':
             if str(e)[0:19] == 'Wrong function code':
-                print ' + Pass expected error condition test'
                 self.ws_out.write_string(self.index_misc_test, result_colm, 'Pass', self.fm_pass)
+                msg1 = ' Pass -- return with Report Unsupported function code '
             else:
                 self.ws_out.write_string(self.index_misc_test, result_colm, 'Fail', self.fm_fail)
+                msg1 = ' Fail -- return with Report Unsupported function code '
+            print msg1
+            self.f.write(msg1 + '\n')
 
+    """ 
+    Modbus Read Communication Statistic Collection 
+    """
+    def collect_statistic_communication_read(self, loop_size, function_code=READ_STATUS_REGISTER):
+        print 'Start Collecting Statistic Communication Read'
+        passed_count = 0
+        failed_count = 0
+        number_of_reads = MODBUS_900_REGISTER_SIZE  # = 15
+        total_reads = number_of_reads * loop_size
+        stat_dict = {}
+        for loop_count in range(0, loop_size):
+            for x in range(number_of_reads):
+                start_addr = random.randint(0, SERIES_900_REGISTER_SIZE - 1)
+                num_regs = random.randint(1, SERIES_900_REGISTER_SIZE - start_addr)
+                start_addr = 2 * start_addr
+                num_regs = 2 * num_regs
+                try:
+                    if function_code == READ_CONFIG_REGISTER:
+                        self.get_data_config(start_addr, function_code, num_regs)
+                    else:
+                        self.get_data_status(start_addr, function_code, num_regs)
+                    passed_count += 1
+                except Exception as e:
+                    print(e)
+                    failed_count += 1
+                    stat_dict[failed_count] = loop_count  # capture when the failure occurred
+            print ('Loop Count:', loop_count, ' Passed Count:', passed_count)
+
+        """
+        Create Worksheet to collect Statistic
+        """
+        self.ws_out = self.wb_out.add_worksheet(self.device_id + ' Statistic Test')
+        cell_format = self.wb_out.add_format({'bold': True, 'align': 'center_across'})
+
+        """ Setup Row 0 Title for Over All Statistic """
+        self.ws_out.set_column('A:D', 20, cell_format)
+        self.ws_out.write_string(0, 0, 'Total Tests Count', cell_format)
+        self.ws_out.write_string(0, 1, 'Number of Passed', cell_format)
+        self.ws_out.write_string(0, 2, 'Number of Failed', cell_format)
+        self.ws_out.write_string(0, 3, '% Passed', cell_format)
+        """ Row 1 Data of Over All Statistic """
+        percent_passed = (100 * passed_count) / total_reads
+        self.ws_out.write_number(1, 0, total_reads)
+        self.ws_out.write_number(1, 1, passed_count)
+        self.ws_out.write_number(1, 2, failed_count)
+        self.ws_out.write_number(1, 3, percent_passed)
+
+        """ Skip Row 2, From Row 3 and on ward save detail data  """
+        row = 3
+        fm_3 = self.wb_out.add_format({'bold': True})
+        self.ws_out.write(row, 0, 'Failed Occurred', fm_3)  # Setup Title for capture Failed Cases
+        self.ws_out.write(row, 1, 'Failed at Loop Count', fm_3)
+        self.ws_out.write(row+1, 0, 'None', fm_3)
+        self.ws_out.write(row+1, 1, 'None', fm_3)
+
+        order = sorted(stat_dict.keys())
+        for key in order:
+            row += 1
+            self.ws_out.write_number(row, 0, key, fm_3)
+            self.ws_out.write_number(row, 1, stat_dict[key], fm_3)
+
+        print 'Done Collecting Statistic Communication Read'
 
     """ -----------------------------------------------------------------------
     main()   Run various modbus tests
@@ -419,8 +566,9 @@ class Modbus_TestLib:
     Run good case condition to verify 900S report status properly
     """
 def main():
-    """ Choose 900 Series device to connect as UUT """
 
+
+    """ Choose 900 Series device to connect as UUT """
     # port_num = input('Enter COM Port Number ')
     # port = 'COM' + str(port_num)
     # baud_rate = input('Enter Baudrate ')
@@ -434,15 +582,24 @@ def main():
     """ 
     Compare 900S Modbus Registers. Starting at the base address, read until end of configuration registers 
       Function Code 2 = Modbus Read Discrete Register = READ_RELAY_ALARM 
-      Function Code 3 = Modbus Read Holding Register = READ_CONFIG_REGISTER 
+      Function Code 3 = Modbus Read Holding Register = READ_CONFIG_REGISTER 1
       Function Code 4 = Modbus Read Input Register = READ_STATUS_REGISTER
     """
     modbus.compare_configuration_registers()
     modbus.compare_data_registers()
     modbus.compare_relay_alarm_bits()
 
-    print 'quick debug exit'
-    exit()  # use for quick debug
+    # Test condition to capture delay time between commands (timing show delays between 160mS to 180 mS)
+    # for i in range(6):
+    #     modbus.compare_data_registers()
+    #     modbus.compare_relay_alarm_bits()
+    #     modbus.compare_data_registers()
+    #     modbus.compare_relay_alarm_bits()
+
+    # modbus.f.close()
+    # modbus.wb_out.close()
+    # print 'quick debug exit'
+    # exit()  # use for quick debug
 
     """ Switch to MiscTest worksheet """
     modbus.ws_out = modbus.wb_out.add_worksheet(modbus.device_id + ' MiscTest')
@@ -461,6 +618,11 @@ def main():
     modbus.run_read_sequential_test()
     modbus.run_read_random_test()
 
+    # modbus.f.close()
+    # modbus.wb_out.close()
+    # print 'quick debug exit'
+    # exit()  # use for quick debug
+
     print '** Test error conditions'
     modbus.run_error_condition_test()
     modbus.unsupported_func_code_test(1)
@@ -470,8 +632,18 @@ def main():
     print '** Retest good case to confirm 900S recover'
     modbus.run_read_sequential_test()
 
-    modbus.wb_out.close()  # Save Excel worksheet using xlsxwriter
+    # modbus.f.close()
+    # modbus.wb_out.close()
+    # print 'quick debug exit'
+    # exit()  # use for quick debug
 
+    # function_code = READ_CONFIG_REGISTER
+    function_code = READ_STATUS_REGISTER
+    loop_size = 10
+    modbus.collect_statistic_communication_read(loop_size, function_code)
+
+    modbus.f.close()
+    modbus.wb_out.close()  # Save Excel worksheet using xlsxwriter
     print('** Done Modbus Test Script')
 
 if __name__ == '__main__':
